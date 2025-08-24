@@ -67,33 +67,33 @@ func parseRequestLine(b []byte) (*RequestLine, int, error) {
 
 func (r *Request) parse(data []byte) (int, error) {
 	read := 0
-outer:
-	for  {
-		switch r.state {
-			case StateError:
-				return 0, ErrorRequestInErrorState
+	outer:
+		for  {
+			switch r.state {
+				case StateError:
+					return 0, ErrorRequestInErrorState
 
-			case StateInit:
-				rl, n, err := parseRequestLine(data[read:])
-				if err != nil {
-					r.state = StateError
-					return 0, err
-				}
+				case StateInit:
+					rl, n, err := parseRequestLine(data[read:])
+					if err != nil {
+						r.state = StateError
+						return 0, err
+					}
 
-				if n == 0 {
+					if n == 0 {
+						break outer
+					}
+
+					r.RequestLine = *rl
+					read += n
+					
+					r.state = StateDone
+
+				case StateDone:
 					break outer
-				}
-
-				r.RequestLine = *rl
-				read += n
-				
-				r.state = StateDone
-
-			case StateDone:
-				break outer
+			}
 		}
-	}
-	return read, nil
+		return read, nil
 }
 
 func (r *Request) done() bool {
