@@ -11,8 +11,8 @@ func isToken(str []byte) bool {
 	for _, ch := range str {
 		found := false
 		
-		if ch > 'A' && ch < 'Z' || 
-		   ch > 'a' && ch < 'z' || 
+		if ch >= 'A' && ch <= 'Z' || 
+		   ch >= 'a' && ch <= 'z' || 
 		   ch >= '0' && ch <= '9' {
 			found = true
 		}
