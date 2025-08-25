@@ -36,7 +36,7 @@ func parseHeader(fieldLine []byte) (string, string, error) {
 	parts := bytes.SplitN(fieldLine, []byte(":"), 2)
 	//slog.Info("parseHeader", "field-line", string(fieldLine))
 	if len(parts) != 2 {
-		return "", "", fmt.Errorf("malformed field line")
+		return "", "", fmt.Errorf("parseHeader()::malformed field line")
 	}
 
 	name := parts[0]
@@ -44,7 +44,7 @@ func parseHeader(fieldLine []byte) (string, string, error) {
 
 	// Header field names must not contain spaces per RFC 9110/9112
 	if bytes.HasSuffix(name, []byte(" ")) {
-		return "", "", fmt.Errorf("malformed field name")
+		return "", "", fmt.Errorf("parseHeader()::malformed field name")
 	}
 
 	return string(name), string(value), nil
@@ -88,8 +88,9 @@ func (h Headers) Parse(data []byte) (int, bool, error) {
 			break
 		}
 
+		// Empty line indicates end of headers
 		if idx == 0 {
-			// We found a double CRLF, we're done parsing headers
+			
 			done = true
 			read += len(rn)
 			break
@@ -97,13 +98,13 @@ func (h Headers) Parse(data []byte) (int, bool, error) {
 
 		//fmt.Printf("header line: \"%s\"\n", string(data[read:idx]))
 		//fmt.Printf("header line: (%d) - %d\n", read, idx)
-		name, value, err := parseHeader(data[read:(read+idx)])
+		name, value, err := parseHeader(data[read:read+idx])
 		if err != nil {
 			return 0, false, err
 		}
 
 		if !isToken([]byte(name)) {
-			return 0, false, fmt.Errorf("malformed field name")
+			return 0, false, fmt.Errorf("isToken()::malformed field name")
 		}
 
 		read += idx + len(rn)
