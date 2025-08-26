@@ -22,7 +22,6 @@ func isToken(str []byte) bool {
 				found = true
 		}
 		
-
 		if !found {
 			return false
 		}
