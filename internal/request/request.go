@@ -96,9 +96,6 @@ func (r *Request) parse(data []byte) (int, error) {
 	dance:
 		for  {
 			currentData := data[read:]
-			if len(currentData) == 0 {
-				r.state = StateDone
-			}
 
 			switch r.state {
 				case StateError:
@@ -188,6 +185,50 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	bufLen := 0
 	for !request.done() {
 		n, err := reader.Read(buf[bufLen:])
+		
+		// Check for read errors (but handle EOF specially)
+		if err != nil && err != io.EOF {
+			return nil, errors.Join(fmt.Errorf("unable to read from reader"), err)
+		}
+
+		bufLen += n
+		readN, parseErr := request.parse(buf[:bufLen])
+		if parseErr != nil {
+			return nil, parseErr
+		}
+
+		copy(buf, buf[readN:bufLen])
+		bufLen -= readN
+
+		// If we hit EOF, check if we're done or if we're missing data
+		if err == io.EOF {
+			if request.state == StateBody {
+				contentLength := getIntHeaders(request.Headers, "content-length", 0)
+				if len(request.Body) < contentLength {
+					return nil, fmt.Errorf("unexpected EOF: expected %d bytes in body, got %d", 
+						contentLength, len(request.Body))
+				}
+			}
+			// If we're still not done but got EOF, that's an error
+			if !request.done() {
+				return nil, fmt.Errorf("unexpected EOF while parsing request")
+			}
+			break
+		}
+	}
+	return request, nil
+}
+
+
+/*
+func RequestFromReader(reader io.Reader) (*Request, error) {
+	request := newRequest()
+
+	// NOTE: buffer could get overrun... a header or the body that exceeds 4K
+	buf := make([]byte, (4 * 1024))
+	bufLen := 0
+	for !request.done() {
+		n, err := reader.Read(buf[bufLen:])
 		if err != nil {
 			return nil, errors.Join(fmt.Errorf("unable to read from reader"), err)
 		}
@@ -203,3 +244,4 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	}
 	return request, nil
 }
+*/
