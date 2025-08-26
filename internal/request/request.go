@@ -28,7 +28,7 @@ type RequestLine struct {
 type Request struct {
 	RequestLine RequestLine
 	Headers	 	*headers.Headers
-	Body		string
+	Body		[]byte
 	state       parserState
 }
 
@@ -158,7 +158,7 @@ func (r *Request) parse(data []byte) (int, error) {
 			}
 
 			remainingData := min(lengthStr-len(r.Body), len(currentData))
-			r.Body += string(currentData[:remainingData])
+			r.Body = append(r.Body, currentData[:remainingData]...)
 
 			read += remainingData
 
