@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 )
 
 
@@ -13,6 +14,7 @@ type parserState string
 const (
 	StateInit     parserState = "init"
 	StateHeaders  parserState = "headers"
+	StateBody     parserState = "body"
 	StateDone     parserState = "done"
 	StateError    parserState = "error"
 )
@@ -26,6 +28,7 @@ type RequestLine struct {
 type Request struct {
 	RequestLine RequestLine
 	Headers	 	*headers.Headers
+	Body		string
 	state       parserState
 }
 
@@ -33,6 +36,19 @@ var ErrorMalformedRequestLine = fmt.Errorf("malformed request-line!")
 //var ErrorUnsupportedHttpVersion = fmt.Errorf("unsupported HTTP version!")
 var ErrorRequestInErrorState = fmt.Errorf("request in error state")
 var SEPARATOR = []byte("\r\n")
+
+func getIntHeaders(headers *headers.Headers, name string, defaultValue int) int {
+	valueStr, exists := headers.Get(name)
+	if !exists {
+		return defaultValue
+	}
+
+	value, err := strconv.Atoi(valueStr)
+	if err != nil {
+		return defaultValue
+	}
+	return value
+}
 
 func newRequest() *Request {
 	return &Request {
@@ -69,11 +85,20 @@ func parseRequestLine(b []byte) (*RequestLine, int, error) {
 	return rl, read, nil
 }
 
+func (r *Request) hasBody() bool {
+	//TODO: When doing chuncked encoding, modify this method
+	contentLength := getIntHeaders(r.Headers, "content-length", 0)
+	return contentLength > 0
+}
+
 func (r *Request) parse(data []byte) (int, error) {
 	read := 0
-	outer:
+	dance:
 		for  {
 			currentData := data[read:]
+			if len(currentData) == 0 {
+				r.state = StateDone
+			}
 
 			switch r.state {
 				case StateError:
@@ -87,7 +112,8 @@ func (r *Request) parse(data []byte) (int, error) {
 					}
 
 					if n == 0 {
-						break outer
+						//r.state = StateDone
+						break dance
 					}
 
 					r.RequestLine = *rl
@@ -97,22 +123,47 @@ func (r *Request) parse(data []byte) (int, error) {
 				case StateHeaders:
 					n, done, err := r.Headers.Parse(currentData)
 					if err != nil {
-						//r.state = StateError
+						r.state = StateError
 						return 0, err
 					}
 
 					if n == 0 {
-						break outer
+						//r.state = StateDone
+						break dance
 					}
 
 					read += n
 
+					// in the real world we would not get an EOF after reading data
+					// therefore we would nicely transition to body, which would
+					// allow us to then transition to done, if applicable
+					// so intead, we're transitioning here. :(
 					if done {
+						if r.hasBody() {
+							r.state = StateBody
+						} else {
+							r.state = StateDone
+						}
+					}
+
+				case StateBody:
+					lengthStr := getIntHeaders(r.Headers, "content-length", 0)
+
+					if lengthStr == 0 {
+						panic("chunked not implemented!")
+					}
+
+					remainingData := min(lengthStr - len(r.Body), len(currentData))
+					r.Body += string(currentData[:remainingData])
+					
+					read += remainingData
+
+					if len(r.Body) == lengthStr {
 						r.state = StateDone
 					}
 
 				case StateDone:
-					break outer
+					break dance
 				
 				default:
 					panic(fmt.Sprintf("DEFAULT: We are in an unexpected state: %s\n", r.state))
