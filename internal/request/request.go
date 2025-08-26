@@ -180,13 +180,11 @@ func (r *Request) error() bool {
 func RequestFromReader(reader io.Reader) (*Request, error) {
 	request := newRequest()
 
-	// NOTE: buffer could get overrun... a header or the body that exceeds 4K
 	buf := make([]byte, (4 * 1024))
 	bufLen := 0
 	for !request.done() {
 		n, err := reader.Read(buf[bufLen:])
 		
-		// Check for read errors (but handle EOF specially)
 		if err != nil && err != io.EOF {
 			return nil, errors.Join(fmt.Errorf("unable to read from reader"), err)
 		}
@@ -197,10 +195,14 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 			return nil, parseErr
 		}
 
+		// Detect infinite loop condition
+		if readN == 0 && n == 0 && bufLen > 0 {
+			return nil, fmt.Errorf("parser stuck: buffer full but no progress made")
+		}
+
 		copy(buf, buf[readN:bufLen])
 		bufLen -= readN
 
-		// If we hit EOF, check if we're done or if we're missing data
 		if err == io.EOF {
 			if request.state == StateBody {
 				contentLength := getIntHeaders(request.Headers, "content-length", 0)
@@ -209,7 +211,6 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 						contentLength, len(request.Body))
 				}
 			}
-			// If we're still not done but got EOF, that's an error
 			if !request.done() {
 				return nil, fmt.Errorf("unexpected EOF while parsing request")
 			}
